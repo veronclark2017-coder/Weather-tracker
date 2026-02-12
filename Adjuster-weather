@@ -1,0 +1,131 @@
+import streamlit as st
+import folium
+import requests
+import pandas as pd
+import math
+from shapely.geometry import Polygon
+from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
+from streamlit_folium import st_folium
+
+st.set_page_config(layout="wide")
+st.title("Meteorological Event Proximity & Directional Analysis")
+
+# ---------------------------------------------------
+# GEOCODE
+# ---------------------------------------------------
+
+def geocode_address(address):
+    geolocator = Nominatim(user_agent="neutral_adjuster_tool")
+    location = geolocator.geocode(address)
+    if location:
+        return location.latitude, location.longitude
+    return None, None
+
+# ---------------------------------------------------
+# DISTANCE CALCULATION
+# ---------------------------------------------------
+
+def calculate_distance(lat1, lon1, lat2, lon2):
+    return geodesic((lat1, lon1), (lat2, lon2)).miles
+
+# ---------------------------------------------------
+# WIND ALIGNMENT
+# ---------------------------------------------------
+
+def calculate_alignment(wind_dir, slope_azimuth):
+    diff = abs((wind_dir - slope_azimuth + 180) % 360 - 180)
+    return diff
+
+def alignment_color(diff):
+    if diff <= 30:
+        return "orange"   # High alignment
+    elif diff <= 75:
+        return "green"    # Moderate
+    else:
+        return "gray"     # Low
+
+# ---------------------------------------------------
+# SAMPLE ROOF SEGMENTATION
+# ---------------------------------------------------
+
+def segment_roof(coords):
+    poly = Polygon(coords)
+    center = poly.centroid
+    segments = []
+
+    for i in range(len(coords)):
+        p1 = coords[i]
+        p2 = coords[(i + 1) % len(coords)]
+
+        azimuth = math.degrees(math.atan2(
+            p2[1] - p1[1],
+            p2[0] - p1[0]
+        )) % 360
+
+        segments.append({
+            "coords": [center.coords[0], p1, p2],
+            "azimuth": azimuth
+        })
+
+    return segments
+
+# ---------------------------------------------------
+# MAIN
+# ---------------------------------------------------
+
+address = st.text_input("Property Address")
+
+if address:
+    lat, lon = geocode_address(address)
+
+    if lat:
+        st.success(f"Coordinates: {lat}, {lon}")
+
+        # Example wind direction (replace with API pull)
+        wind_direction = 240  # degrees
+
+        m = folium.Map(location=[lat, lon], zoom_start=19)
+
+        # Example roof polygon (replace with OSM pull)
+        offset = 0.00005
+        roof_coords = [
+            (lat - offset, lon - offset),
+            (lat - offset, lon + offset),
+            (lat + offset, lon + offset),
+            (lat + offset, lon - offset)
+        ]
+
+        segments = segment_roof(roof_coords)
+
+        for seg in segments:
+            diff = calculate_alignment(wind_direction, seg["azimuth"])
+            color = alignment_color(diff)
+
+            folium.Polygon(
+                seg["coords"],
+                color=color,
+                fill=True,
+                fill_opacity=0.5,
+                tooltip=f"Alignment Difference: {round(diff,1)}°"
+            ).add_to(m)
+
+        # Wind arrow
+        arrow_length = 0.0003
+        arrow_lat = lat + arrow_length * math.cos(math.radians(wind_direction))
+        arrow_lon = lon + arrow_length * math.sin(math.radians(wind_direction))
+
+        folium.PolyLine(
+            [[lat, lon], [arrow_lat, arrow_lon]],
+            color="blue",
+            weight=4,
+            tooltip="Dominant Wind Direction"
+        ).add_to(m)
+
+        st_folium(m, width=1000, height=600)
+
+        st.markdown("""
+        **Interpretation Guidance:**  
+        Color shading represents relative angular alignment between roof slope orientation and recorded dominant wind direction during the selected hail event.  
+        This visualization is intended to assist inspection prioritization and does not confirm physical damage.
+        """)
