@@ -1252,7 +1252,7 @@ def main() -> None:
     init_state()
     inject_center_table_css()
 
-    st.set_page_config(page_title=f"{APP_TITLE} — {APP_SUBTITLE}", layout="wide"), initial_sidebar_state="collapsed"
+    st.set_page_config(page_title=f"{APP_TITLE} — {APP_SUBTITLE}", layout="wide", initial_sidebar_state="collapsed")
     st.title(APP_TITLE)
     st.subheader(APP_SUBTITLE)
     st.caption(
